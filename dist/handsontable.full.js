@@ -3929,22 +3929,93 @@ Handsontable.AutocompleteCell = {
 };
 Handsontable.CheckboxCell = {
   editor: getEditorConstructor('checkbox'),
-  renderer: getRenderer('checkbox')
+  renderer: getRenderer('checkbox'),
+  formatCopyable: function (value) {
+    return value ? '1' : '0';
+  },
+  comparer: function (sortOrder) {
+    if (sortOrder) {
+      return function (a, b) {
+        return (b[1] === null ? -1 : b[1]) - (a[1] === null ? -1 : a[1]);
+      };
+    } else {
+      return function (a, b) {
+        return (a[1] === null ? -1 : a[1]) - (b[1] === null ? -1 : b[1]);
+      };
+    }
+  }
 };
 Handsontable.TextCell = {
   editor: Handsontable.mobileBrowser ? getEditorConstructor('mobile') : getEditorConstructor('text'),
-  renderer: getRenderer('text')
+  renderer: getRenderer('text'),
+  formatCopyable: function (value) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  },
+  comparer: function (sortOrder) {
+    if (window.Intl && window.Intl.Collator) {
+      var collator = new Intl.Collator(this.language);
+      if (sortOrder) {
+        return function (a, b) { return collator.compare(a[1], b[1]); };
+      } else {
+        return function (a, b) { return collator.compare(b[1], a[1]); };
+      }
+    } else {
+      return Handsontable.plugins.ColumnSorting.prototype.defaultSort(sortOrder);
+    }
+  }
 };
 Handsontable.NumericCell = {
   editor: getEditorConstructor('numeric'),
   renderer: getRenderer('numeric'),
-  validator: Handsontable.NumericValidator,
+  comparer: function (sortOrder) {
+    if (sortOrder) {
+      return function (a, b) {
+        if (a[1] === null || b[1] === null) {
+          return (b[1] === null) - (a[1] === null);
+        } else if (isNaN(a[1]) || isNaN(b[1])) {
+          return isNaN(b[1]) - isNaN(a[1]);
+        } else {
+          return a[1] < b[1] ? -1 : b[1] < a[1] ? 1 : 0;
+        }
+      };
+    } else {
+      return function (a, b) {
+        if (a[1] === null || b[1] === null) {
+          return (a[1] === null) - (b[1] === null);
+        } else if (isNaN(a[1]) || isNaN(b[1])) {
+          return isNaN(a[1]) - isNaN(b[1]);
+        } else {
+          return a[1] < b[1] ? 1 : b[1] < a[1] ? -1 : 0;
+        }
+      };
+    }
+  },
   dataType: 'number'
 };
 Handsontable.DateCell = {
   editor: getEditorConstructor('date'),
-  validator: Handsontable.DateValidator,
-  renderer: getRenderer('autocomplete')
+  formatCopyable: function (value) {
+    return value.toLocaleDateString();
+  },
+  renderer: function (instance, TD, row, col, prop, value, cellProperties) {
+    if (value === null) {
+      value = '';
+    } else if (value instanceof Date) {
+      value = DateEditor.formatDate(value, cellProperties);
+    }
+    Handsontable.renderers.AutocompleteRenderer(instance, TD, row, col, prop, value, cellProperties);
+  },
+  comparer: function (sortOrder) {
+    if (sortOrder) {
+      return function (a, b) {
+        return a[1] !== null && b[1] !== null ? (a[1] < b[1] ? -1 : b[1] < a[1] ? 1 : 0) : a[1] !== null ? 1 : b[1] !== null ? -1 : 0;
+      };
+    } else {
+      return function (a, b) {
+        return a[1] !== null && b[1] !== null ? (a[1] < b[1] ? 1 : b[1] < a[1] ? -1 : 0) : a[1] !== null ? -1 : b[1] !== null ? 1 : 0;
+    };
+  }
+}
 };
 Handsontable.HandsontableCell = {
   editor: getEditorConstructor('handsontable'),
@@ -4282,7 +4353,6 @@ Handsontable.Core = function Core(rootElement, userSettings) {
           };
           var skippedRow = 0;
           var skippedColumn = 0;
-          var pushData = true;
           var cellMeta;
           var getInputValue = function getInputValue(row) {
             var col = arguments[1] !== (void 0) ? arguments[1] : null;
@@ -4316,7 +4386,6 @@ Handsontable.Core = function Core(rootElement, userSettings) {
             if ((source === 'paste' || source === 'autofill') && cellMeta.skipRowOnPaste) {
               skippedRow++;
               current.row++;
-              rlen++;
               continue;
             }
             skippedColumn = 0;
@@ -4328,7 +4397,6 @@ Handsontable.Core = function Core(rootElement, userSettings) {
               if ((source === 'paste' || source === 'autofill') && cellMeta.skipColumnOnPaste) {
                 skippedColumn++;
                 current.col++;
-                clen++;
                 continue;
               }
               if (cellMeta.readOnly) {
@@ -4348,25 +4416,7 @@ Handsontable.Core = function Core(rootElement, userSettings) {
                   value = typeof(result.value) === 'undefined' ? value : result.value;
                 }
               }
-              if (value !== null && typeof value === 'object') {
-                if (orgValue === null || typeof orgValue !== 'object') {
-                  pushData = false;
-                } else {
-                  var orgValueSchema = duckSchema(orgValue[0] || orgValue);
-                  var valueSchema = duckSchema(value[0] || value);
-                  if (isObjectEquals(orgValueSchema, valueSchema)) {
-                    value = deepClone(value);
-                  } else {
-                    pushData = false;
-                  }
-                }
-              } else if (orgValue !== null && typeof orgValue === 'object') {
-                pushData = false;
-              }
-              if (pushData) {
-                setData.push([current.row, current.col, value]);
-              }
-              pushData = true;
+              setData.push([current.row, current.col, value]);
               current.col++;
             }
             current.row++;
@@ -4658,21 +4708,6 @@ Handsontable.Core = function Core(rootElement, userSettings) {
         var col = datamap.propToCol(changes[i][1]);
         var logicalCol = instance.runHooks('modifyCol', col);
         var cellProperties = instance.getCellMeta(row, logicalCol);
-        if (cellProperties.type === 'numeric' && typeof changes[i][3] === 'string') {
-          if (changes[i][3].length > 0 && (/^-?[\d\s]*(\.|\,)?\d*$/.test(changes[i][3]) || cellProperties.format)) {
-            var len = changes[i][3].length;
-            if (typeof cellProperties.language == 'undefined') {
-              numeral.language('en');
-            } else if (changes[i][3].indexOf('.') === len - 3 && changes[i][3].indexOf(',') === -1) {
-              numeral.language('en');
-            } else {
-              numeral.language(cellProperties.language);
-            }
-            if (numeral.validate(changes[i][3])) {
-              changes[i][3] = numeral().unformat(changes[i][3]);
-            }
-          }
-        }
         if (instance.getCellValidator(cellProperties)) {
           waitingForValidator.addValidatorToQueue();
           instance.validateCell(changes[i][3], cellProperties, (function(i, cellProperties) {
@@ -5701,7 +5736,9 @@ DefaultSettings.prototype = {
   autoRowSize: void 0,
   dateFormat: void 0,
   correctFormat: false,
-  defaultDate: void 0,
+  dateFactory: void 0,
+  formatCopyable: void 0,
+  comparer: void 0,
   strict: void 0,
   renderAllRows: void 0
 };
@@ -5997,8 +6034,14 @@ DataMap.prototype.get = function(row, prop) {
 };
 var copyableLookup = cellMethodLookupFactory('copyable', false);
 DataMap.prototype.getCopyable = function(row, prop) {
-  if (copyableLookup.call(this.instance, row, this.propToCol(prop))) {
-    return this.get(row, prop);
+  var col = this.propToCol(prop);
+  if (copyableLookup.call(this.instance, row, col)) {
+    var value = this.get(row, prop);
+    if (value === null) {
+      return '';
+    }
+    var cellProperties = this.instance.getCellMeta(row, col);
+    return cellProperties.formatCopyable ? cellProperties.formatCopyable(value, row, col, prop) : value;
   }
   return '';
 };
@@ -6672,8 +6715,10 @@ BaseEditor.prototype.beginEditing = function(initialValue, event) {
   this.instance.view.scrollViewport(new WalkontableCellCoords(this.row, this.col));
   this.instance.view.render();
   this.state = Handsontable.EditorState.EDITING;
-  initialValue = typeof initialValue == 'string' ? initialValue : this.originalValue;
-  this.setValue(stringify(initialValue));
+  if (initialValue == void 0) {
+    initialValue = this.originalValue;
+  }
+  this.setValue(initialValue);
   this.open(event);
   this._opened = true;
   this.focus();
@@ -7118,10 +7163,13 @@ var DateEditor = function DateEditor(hotInstance) {
   this.$datePicker = null;
   this.datePicker = null;
   this.datePickerStyle = null;
-  this.defaultDateFormat = 'DD/MM/YYYY';
   this.isCellEdited = false;
   this.parentDestroyed = false;
   $traceurRuntime.superConstructor($DateEditor).call(this, hotInstance);
+};
+DateEditor.defaultDateFormat = 'YYYY-MM-DD';
+DateEditor.formatDate = function(value, cellProperties) {
+  return moment(value).format(cellProperties.dateFormat || DateEditor.defaultDateFormat);
 };
 var $DateEditor = DateEditor;
 ($traceurRuntime.createClass)(DateEditor, {
@@ -7188,12 +7236,27 @@ var $DateEditor = DateEditor;
     this.hideDatepicker();
     $traceurRuntime.superGet(this, $DateEditor.prototype, "finishEditing").call(this, isCancelled, ctrlDown);
   },
+  setValue: function (value) {
+    if (value instanceof Date) {
+      value = DateEditor.formatDate(value, this.cellProperties);
+    }
+    $traceurRuntime.superGet(this, $DateEditor.prototype, "setValue").call(this, value);
+  },
+  getValue: function () {
+    var value = $traceurRuntime.superGet(this, $DateEditor.prototype, "getValue").call(this);
+    if (typeof value === 'string') {
+      var parsed = moment(value, this.cellProperties.dateFormat || DateEditor.defaultDateFormat, true);
+      if (parsed.isValid()) {
+        value = this.cellProperties.dateFactory ? this.cellProperties.dateFactory(parsed.valueOf()) : parsed.toDate();
+      }
+    }
+    return value;
+  },
   showDatepicker: function(event) {
     this.$datePicker.config(this.getDatePickerConfig());
     var offset = this.TD.getBoundingClientRect();
-    var dateFormat = this.cellProperties.dateFormat || this.defaultDateFormat;
+    var dateFormat = this.cellProperties.dateFormat || DateEditor.defaultDateFormat;
     var datePickerConfig = this.$datePicker.config();
-    var dateStr;
     var isMouseDown = this.instance.view.isMouseDown();
     var isMeta = event ? isMetaKey(event.keyCode) : false;
     this.datePickerStyle.top = (window.pageYOffset + offset.top + outerHeight(this.TD)) + 'px';
@@ -7201,26 +7264,12 @@ var $DateEditor = DateEditor;
     this.$datePicker._onInputFocus = function() {};
     datePickerConfig.format = dateFormat;
     if (this.originalValue) {
-      dateStr = this.originalValue;
-      if (moment(dateStr, dateFormat, true).isValid()) {
-        this.$datePicker.setMoment(moment(dateStr, dateFormat), true);
-      }
+      this.$datePicker.setMoment(moment(this.originalValue));
       if (!isMeta && !isMouseDown) {
-        this.setValue('');
+        this.setValue(null);
       }
     } else {
-      if (this.cellProperties.defaultDate) {
-        dateStr = this.cellProperties.defaultDate;
-        datePickerConfig.defaultDate = dateStr;
-        if (moment(dateStr, dateFormat, true).isValid()) {
-          this.$datePicker.setMoment(moment(dateStr, dateFormat), true);
-        }
-        if (!isMeta && !isMouseDown) {
-          this.setValue('');
-        }
-      } else {
-        this.$datePicker.gotoToday();
-      }
+      this.$datePicker.gotoToday();
     }
     this.datePickerStyle.display = 'block';
     this.$datePicker.show();
@@ -7242,13 +7291,10 @@ var $DateEditor = DateEditor;
     options.trigger = htInput;
     options.container = this.datePicker;
     options.bound = false;
-    options.format = options.format || this.defaultDateFormat;
+    options.format = options.format || DateEditor.defaultDateFormat;
     options.reposition = options.reposition || false;
-    options.onSelect = (function(dateStr) {
-      if (!isNaN(dateStr.getTime())) {
-        dateStr = moment(dateStr).format($__9.cellProperties.dateFormat || $__9.defaultDateFormat);
-      }
-      $__9.setValue(dateStr);
+    options.onSelect = (function(dateValue) {
+      $__9.setValue(dateValue);
       $__9.hideDatepicker();
       if (origOnSelect) {
         origOnSelect();
@@ -7735,16 +7781,46 @@ var NumericEditor = function NumericEditor() {
   $traceurRuntime.superConstructor($NumericEditor).apply(this, arguments);
 };
 var $NumericEditor = NumericEditor;
-($traceurRuntime.createClass)(NumericEditor, {beginEditing: function(initialValue) {
-    if (typeof initialValue === 'undefined' && this.originalValue) {
-      if (typeof this.cellProperties.language !== 'undefined') {
-        numeral.language(this.cellProperties.language);
+($traceurRuntime.createClass)(NumericEditor, {
+  setValue: function (value) {
+    if (typeof value === 'number') {
+      if (isNaN(value)) {
+        // format NaN as a string
+        value = 'NaN';
+      } else {
+        // replace the decimal point with its culture specific counterpart
+        numeral.language(this.cellProperties.language || 'en');
+        value = value.toString().replace('.', numeral.languageData().delimiters.decimal);
       }
-      var decimalDelimiter = numeral.languageData().delimiters.decimal;
-      initialValue = ('' + this.originalValue).replace('.', decimalDelimiter);
     }
-    $traceurRuntime.superGet(this, $NumericEditor.prototype, "beginEditing").call(this, initialValue);
-  }}, {}, TextEditor);
+    $traceurRuntime.superGet(this, $NumericEditor.prototype, "setValue").call(this, value);
+  },
+  getValue: function() {
+    var value = $traceurRuntime.superGet(this, $NumericEditor.prototype, "getValue").call(this);
+    if (typeof value === 'string') {
+      if (value === 'NaN') {
+        // convert NaN
+        value = NaN;
+      } else {
+        // remove all thousands delims and then replace the decimal separator
+        numeral.language(this.cellProperties.language || 'en');
+        var delimiters = numeral.languageData().delimiters;
+        var patchedValue = value.toString();
+        var len;
+        do { len = patchedValue.length; }
+        while ((patchedValue = patchedValue.replace(delimiters.thousands, '')).length < len);
+        patchedValue = patchedValue.replace(delimiters.decimal, '.');
+
+        // try to convert the string
+        var number = Number(patchedValue);
+        if (!isNaN(number)) {
+          value = number;
+        }
+      }
+    }
+    return value;
+  }
+}, {}, TextEditor);
 ;
 registerEditor('numeric', NumericEditor);
 
@@ -8057,10 +8133,11 @@ TextEditor.prototype.init = function() {
   });
 };
 TextEditor.prototype.getValue = function() {
-  return this.TEXTAREA.value;
+  var value = this.TEXTAREA.value;
+  return value === '' ? null : value;
 };
 TextEditor.prototype.setValue = function(newValue) {
-  this.TEXTAREA.value = newValue;
+  this.TEXTAREA.value = newValue === null ? '' : newValue;
 };
 var onBeforeKeyDown = function onBeforeKeyDown(event) {
   var instance = this,
@@ -9897,7 +9974,11 @@ function deepExtend(target, extension) {
 }
 function deepClone(obj) {
   if (typeof obj === 'object') {
-    return JSON.parse(JSON.stringify(obj));
+    if (obj instanceof Date) {
+      return obj;
+    } else {
+      return JSON.parse(JSON.stringify(obj));
+    }
   }
   return obj;
 }
@@ -11750,35 +11831,11 @@ var $ColumnSorting = ColumnSorting;
       return 0;
     };
   },
-  dateSort: function(sortOrder) {
-    return function(a, b) {
-      if (a[1] === b[1]) {
-        return 0;
-      }
-      if (a[1] === null || a[1] === '') {
-        return 1;
-      }
-      if (b[1] === null || b[1] === '') {
-        return -1;
-      }
-      var aDate = new Date(a[1]);
-      var bDate = new Date(b[1]);
-      if (aDate < bDate) {
-        return sortOrder ? -1 : 1;
-      }
-      if (aDate > bDate) {
-        return sortOrder ? 1 : -1;
-      }
-      return 0;
-    };
-  },
   sort: function() {
     if (typeof this.hot.sortOrder == 'undefined') {
       this.hot.sortIndex.length = 0;
       return;
     }
-    var colMeta,
-        sortFunction;
     this.hot.sortingEnabled = false;
     this.hot.sortIndex.length = 0;
     var colOffset = this.hot.colOffset();
@@ -11786,16 +11843,9 @@ var $ColumnSorting = ColumnSorting;
         ilen = this.hot.countRows() - this.hot.getSettings().minSpareRows; i < ilen; i++) {
       this.hot.sortIndex.push([i, this.hot.getDataAtCell(i, this.hot.sortColumn + colOffset)]);
     }
-    colMeta = this.hot.getCellMeta(0, this.hot.sortColumn);
+    var colMeta = this.hot.getCellMeta(0, this.hot.sortColumn);
     this.sortIndicators[this.hot.sortColumn] = colMeta.sortIndicator;
-    switch (colMeta.type) {
-      case 'date':
-        sortFunction = this.dateSort;
-        break;
-      default:
-        sortFunction = this.defaultSort;
-    }
-    this.hot.sortIndex.sort(sortFunction(this.hot.sortOrder));
+    this.hot.sortIndex.sort(colMeta.comparer ? colMeta.comparer(this.hot.sortOrder) : this.defaultSort(this.hot.sortOrder));
     for (var i = this.hot.sortIndex.length; i < this.hot.countRows(); i++) {
       this.hot.sortIndex.push([i, this.hot.getDataAtCell(i, this.hot.sortColumn + colOffset)]);
     }
@@ -17520,25 +17570,31 @@ var $__2 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_re
     getRenderer = $__2.getRenderer,
     registerRenderer = $__2.registerRenderer;
 var WalkontableCellCoords = ($___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__ = require("3rdparty/walkontable/src/cell/coords"), $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__ && $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__.__esModule && $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__ || {default: $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__}).WalkontableCellCoords;
-var clonableWRAPPER = document.createElement('DIV');
-clonableWRAPPER.className = 'htAutocompleteWrapper';
-var clonableARROW = document.createElement('DIV');
-clonableARROW.className = 'htAutocompleteArrow';
-clonableARROW.appendChild(document.createTextNode(String.fromCharCode(9660)));
-var wrapTdContentWithWrapper = function(TD, WRAPPER) {
-  WRAPPER.innerHTML = TD.innerHTML;
-  empty(TD);
-  TD.appendChild(WRAPPER);
-};
+var arrow = '<div class="htAutocompleteArrow">' + String.fromCharCode(9660) + '</div>';
+var entityMap                    = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;', '/':'&#47;'};
+var entityRegex                  = /[&<>"'\/]/g;
+var entityReplacer               = function (ch) { return entityMap[ch]; };
+var entityMapWithWhitespace      = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;', '/':'&#47;', ' ':String.fromCharCode(160)};
+var entityRegexWithWhitespace    = /[&<>"'\/ ]/g;
+var entityReplacerWithWhitespace = function (ch) { return entityMapWithWhitespace[ch]; };
 function autocompleteRenderer(instance, TD, row, col, prop, value, cellProperties) {
-  var WRAPPER = clonableWRAPPER.cloneNode(true);
-  var ARROW = clonableARROW.cloneNode(true);
-  getRenderer('text')(instance, TD, row, col, prop, value, cellProperties);
-  TD.appendChild(ARROW);
+  Handsontable.renderers.BaseRenderer(instance, TD, row, col, prop, value, cellProperties);
   addClass(TD, 'htAutocomplete');
-  if (!TD.firstChild) {
-    TD.appendChild(document.createTextNode(String.fromCharCode(160)));
+  if (value == void 0) {
+    value = cellProperties.placeholder || '';
+  } else {
+    value += '';
+    if (instance.getSettings().trimWhitespace) {
+      value = value.replace(entityRegex, entityReplacer);
+    } else {
+      value = value.replace(entityRegexWithWhitespace, entityReplacerWithWhitespace);
+    }
   }
+  value += arrow;
+  if (!TD.firstChild) {
+    value += String.fromCharCode(160);
+  }
+  TD.innerHTML = value;
   if (!instance.acArrowListener) {
     var eventManager = eventManagerObject(instance);
     instance.acArrowListener = function(event) {
@@ -17728,8 +17784,8 @@ var $__1 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_re
     getRenderer = $__1.getRenderer,
     registerRenderer = $__1.registerRenderer;
 function htmlRenderer(instance, TD, row, col, prop, value, cellProperties) {
-  getRenderer('base').apply(this, arguments);
-  fastInnerHTML(TD, value);
+  Handsontable.renderers.BaseRenderer(instance, TD, row, col, prop, value, cellProperties);
+  TD.innerHTML = value;
 }
 ;
 registerRenderer('html', htmlRenderer);
@@ -17745,23 +17801,28 @@ Object.defineProperties(exports, {
 });
 var $__numeral__,
     $___46__46__47_helpers_47_dom_47_element__,
-    $___46__46__47_renderers__,
-    $___46__46__47_helpers_47_number__;
+    $___46__46__47_renderers__;
 var numeral = ($__numeral__ = require("numeral"), $__numeral__ && $__numeral__.__esModule && $__numeral__ || {default: $__numeral__}).default;
 var addClass = ($___46__46__47_helpers_47_dom_47_element__ = require("helpers/dom/element"), $___46__46__47_helpers_47_dom_47_element__ && $___46__46__47_helpers_47_dom_47_element__.__esModule && $___46__46__47_helpers_47_dom_47_element__ || {default: $___46__46__47_helpers_47_dom_47_element__}).addClass;
 var $__2 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_renderers__ && $___46__46__47_renderers__.__esModule && $___46__46__47_renderers__ || {default: $___46__46__47_renderers__}),
     getRenderer = $__2.getRenderer,
     registerRenderer = $__2.registerRenderer;
-var isNumeric = ($___46__46__47_helpers_47_number__ = require("helpers/number"), $___46__46__47_helpers_47_number__ && $___46__46__47_helpers_47_number__.__esModule && $___46__46__47_helpers_47_number__ || {default: $___46__46__47_helpers_47_number__}).isNumeric;
 function numericRenderer(instance, TD, row, col, prop, value, cellProperties) {
-  if (isNumeric(value)) {
-    if (typeof cellProperties.language !== 'undefined') {
-      numeral.language(cellProperties.language);
+  if (value === null) {
+    value = '';
+  } else if (typeof value === 'number') {
+    if (isNaN(value)) {
+      value = 'NaN';
+    } else {
+      var language = cellProperties.language || 'en';
+      if (language !== numeral.language()) {
+        numeral.language(language);
+      }
+      value = numeral(value).format(cellProperties.format || '0');
     }
-    value = numeral(value).format(cellProperties.format || '0');
     addClass(TD, 'htNumeric');
   }
-  getRenderer('text')(instance, TD, row, col, prop, value, cellProperties);
+  Handsontable.renderers.TextRenderer(instance, TD, row, col, prop, value, cellProperties);
 }
 ;
 registerRenderer('numeric', numericRenderer);
@@ -17813,13 +17874,14 @@ var $__2 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_re
     getRenderer = $__2.getRenderer,
     registerRenderer = $__2.registerRenderer;
 function textRenderer(instance, TD, row, col, prop, value, cellProperties) {
-  getRenderer('base').apply(this, arguments);
-  if (!value && cellProperties.placeholder) {
-    value = cellProperties.placeholder;
-  }
-  var escaped = stringify(value);
-  if (!instance.getSettings().trimWhitespace) {
-    escaped = escaped.replace(/ /g, String.fromCharCode(160));
+  Handsontable.renderers.BaseRenderer(instance, TD, row, col, prop, value, cellProperties);
+  if (value == void 0) {
+    value = cellProperties.placeholder || '';
+  } else {
+    value += '';
+    if (!instance.getSettings().trimWhitespace) {
+      value = value.replace(/ /g, String.fromCharCode(160));
+    }
   }
   if (cellProperties.rendererTemplate) {
     empty(TD);
@@ -17830,7 +17892,7 @@ function textRenderer(instance, TD, row, col, prop, value, cellProperties) {
     TEMPLATE.model = instance.getSourceDataAtRow(row);
     TD.appendChild(TEMPLATE);
   } else {
-    fastInnerText(TD, escaped);
+    fastInnerText(TD, value);
   }
 }
 ;
@@ -19109,15 +19171,15 @@ function process(value, callback) {
 var $__moment__,
     $___46__46__47_editors__;
 var moment = ($__moment__ = require("moment"), $__moment__ && $__moment__.__esModule && $__moment__ || {default: $__moment__}).default;
-var getEditor = ($___46__46__47_editors__ = require("editors"), $___46__46__47_editors__ && $___46__46__47_editors__.__esModule && $___46__46__47_editors__ || {default: $___46__46__47_editors__}).getEditor;
+var getEditorConstructor = ($___46__46__47_editors__ = require("editors"), $___46__46__47_editors__ && $___46__46__47_editors__.__esModule && $___46__46__47_editors__ || {default: $___46__46__47_editors__}).getEditorConstructor;
 Handsontable.DateValidator = function(value, callback) {
   var valid = true;
-  var dateEditor = getEditor('date', this.instance);
+  var dateEditor = getEditorConstructor('date');
   if (value === null) {
     value = '';
   }
   var isValidDate = moment(new Date(value)).isValid();
-  var isValidFormat = moment(value, this.dateFormat || dateEditor.defaultDateFormat, true).isValid();
+  var isValidFormat = moment(value, this.dateFormat || DateEditor.defaultDateFormat, true).isValid();
   if (!isValidDate) {
     valid = false;
   }
