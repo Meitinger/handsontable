@@ -4650,11 +4650,13 @@ Handsontable.Core = function Core(rootElement, userSettings) {
       for (r = topLeft.row; r <= bottomRight.row; r++) {
         for (c = topLeft.col; c <= bottomRight.col; c++) {
           if (!instance.getCellMeta(r, c).readOnly) {
-            changes.push([r, c, '']);
+            // push null not an empty string
+            changes.push([r, c, null]);
           }
         }
       }
-      instance.setDataAtCell(changes);
+      // method either acts as a shortcut for an editor or autofill
+      instance.setDataAtCell(changes, topLeft.row === bottomRight.row && topLeft.col === bottomRight.col ? 'edit' : 'autofill');
     }
   };
   this.init = function() {
@@ -5726,8 +5728,6 @@ DefaultSettings.prototype = {
   settings: void 0,
   source: void 0,
   title: void 0,
-  checkedTemplate: void 0,
-  uncheckedTemplate: void 0,
   label: void 0,
   format: void 0,
   language: void 0,
@@ -6452,7 +6452,7 @@ function EditorManager(instance, priv, selection) {
     });
     function onDblClick(event, coords, elem) {
       if (elem.nodeName == 'TD') {
-        _this.openEditor();
+        _this.openEditor(null, event);
         if (activeEditor) {
           activeEditor.enableFullEditMode();
         }
@@ -6703,7 +6703,8 @@ BaseEditor.prototype.saveValue = function(val, ctrlDown) {
       sel[1] = sel[3];
       sel[3] = tmp;
     }
-    this.instance.populateFromArray(sel[0], sel[1], val, sel[2], sel[3], 'edit');
+    // since we are filling an area the source should reflect that
+    this.instance.populateFromArray(sel[0], sel[1], val, sel[2], sel[3], 'autofill');
   } else {
     this.instance.populateFromArray(this.row, this.col, val, null, null, 'edit');
   }
@@ -7109,11 +7110,20 @@ var CheckboxEditor = function CheckboxEditor() {
 };
 var $CheckboxEditor = CheckboxEditor;
 ($traceurRuntime.createClass)(CheckboxEditor, {
-  beginEditing: function() {
-    var checkbox = this.TD.querySelector('input[type="checkbox"]');
-    if (!hasClass(checkbox, 'htBadValue')) {
-      checkbox.click();
+  beginEditing: function(initialValue, event) {
+    if (this.state != Handsontable.EditorState.VIRGIN) {
+      return;
     }
+    if (initialValue == void 0) {
+      initialValue = this.originalValue;
+    }
+    if (typeof initialValue === 'boolean') {
+      initialValue = initialValue ? false : null;
+    } else {
+      initialValue = true;
+    }
+    this.saveValue([[initialValue]], event && (event.ctrlKey || event.metaKey) && !event.altKey);
+    this.instance.view.render();
   },
   finishEditing: function() {},
   init: function() {},
@@ -17559,17 +17569,13 @@ Object.defineProperties(exports, {
 });
 var $___46__46__47_helpers_47_dom_47_element__,
     $___46__46__47_eventManager__,
-    $___46__46__47_renderers__,
-    $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__;
+    $___46__46__47_renderers__;
 var $__0 = ($___46__46__47_helpers_47_dom_47_element__ = require("helpers/dom/element"), $___46__46__47_helpers_47_dom_47_element__ && $___46__46__47_helpers_47_dom_47_element__.__esModule && $___46__46__47_helpers_47_dom_47_element__ || {default: $___46__46__47_helpers_47_dom_47_element__}),
     addClass = $__0.addClass,
-    hasClass = $__0.hasClass,
-    empty = $__0.empty;
+    hasClass = $__0.hasClass;
 var eventManagerObject = ($___46__46__47_eventManager__ = require("eventManager"), $___46__46__47_eventManager__ && $___46__46__47_eventManager__.__esModule && $___46__46__47_eventManager__ || {default: $___46__46__47_eventManager__}).eventManager;
 var $__2 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_renderers__ && $___46__46__47_renderers__.__esModule && $___46__46__47_renderers__ || {default: $___46__46__47_renderers__}),
-    getRenderer = $__2.getRenderer,
     registerRenderer = $__2.registerRenderer;
-var WalkontableCellCoords = ($___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__ = require("3rdparty/walkontable/src/cell/coords"), $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__ && $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__.__esModule && $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__ || {default: $___46__46__47_3rdparty_47_walkontable_47_src_47_cell_47_coords__}).WalkontableCellCoords;
 var arrow = '<div class="htAutocompleteArrow">' + String.fromCharCode(9660) + '</div>';
 var entityMap                    = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;', '/':'&#47;'};
 var entityRegex                  = /[&<>"'\/]/g;
@@ -17579,27 +17585,29 @@ var entityRegexWithWhitespace    = /[&<>"'\/ ]/g;
 var entityReplacerWithWhitespace = function (ch) { return entityMapWithWhitespace[ch]; };
 function autocompleteRenderer(instance, TD, row, col, prop, value, cellProperties) {
   Handsontable.renderers.BaseRenderer(instance, TD, row, col, prop, value, cellProperties);
+  // get the value
   addClass(TD, 'htAutocomplete');
   if (value == void 0) {
     value = cellProperties.placeholder || '';
   } else {
     value += '';
+    // escape entities and preserve spaces if requested
     if (instance.getSettings().trimWhitespace) {
       value = value.replace(entityRegex, entityReplacer);
     } else {
       value = value.replace(entityRegexWithWhitespace, entityReplacerWithWhitespace);
     }
   }
+  // add the error and set the html
   value += arrow;
-  if (!TD.firstChild) {
-    value += String.fromCharCode(160);
-  }
   TD.innerHTML = value;
+  // create the listener if necessary
   if (!instance.acArrowListener) {
     var eventManager = eventManagerObject(instance);
+    var dummyTD = document.createElement('TD');
     instance.acArrowListener = function(event) {
       if (hasClass(event.target, 'htAutocompleteArrow')) {
-        instance.view.wt.getSetting('onCellDblClick', null, new WalkontableCellCoords(row, col), TD);
+        instance.view.wt.getSetting('onCellDblClick', event, null, dummyTD);
       }
     };
     eventManager.addEventListener(instance.rootElement, 'mousedown', instance.acArrowListener);
@@ -17612,7 +17620,7 @@ function autocompleteRenderer(instance, TD, row, col, prop, value, cellPropertie
 registerRenderer('autocomplete', autocompleteRenderer);
 
 //# 
-},{"3rdparty/walkontable/src/cell/coords":5,"eventManager":41,"helpers/dom/element":45,"renderers":88}],91:[function(require,module,exports){
+},{"eventManager":41,"helpers/dom/element":45,"renderers":88}],91:[function(require,module,exports){
 "use strict";
 Object.defineProperties(exports, {
   checkboxRenderer: {get: function() {
@@ -17621,155 +17629,71 @@ Object.defineProperties(exports, {
   __esModule: {value: true}
 });
 var $___46__46__47_helpers_47_dom_47_element__,
-    $___46__46__47_helpers_47_string__,
     $___46__46__47_eventManager__,
-    $___46__46__47_renderers__,
-    $___46__46__47_helpers_47_unicode__,
-    $___46__46__47_helpers_47_dom_47_event__;
+    $___46__46__47_renderers__;
 var $__0 = ($___46__46__47_helpers_47_dom_47_element__ = require("helpers/dom/element"), $___46__46__47_helpers_47_dom_47_element__ && $___46__46__47_helpers_47_dom_47_element__.__esModule && $___46__46__47_helpers_47_dom_47_element__ || {default: $___46__46__47_helpers_47_dom_47_element__}),
-    empty = $__0.empty,
-    addClass = $__0.addClass,
     hasClass = $__0.hasClass;
-var equalsIgnoreCase = ($___46__46__47_helpers_47_string__ = require("helpers/string"), $___46__46__47_helpers_47_string__ && $___46__46__47_helpers_47_string__.__esModule && $___46__46__47_helpers_47_string__ || {default: $___46__46__47_helpers_47_string__}).equalsIgnoreCase;
-var EventManager = ($___46__46__47_eventManager__ = require("eventManager"), $___46__46__47_eventManager__ && $___46__46__47_eventManager__.__esModule && $___46__46__47_eventManager__ || {default: $___46__46__47_eventManager__}).EventManager;
+var eventManagerObject = ($___46__46__47_eventManager__ = require("eventManager"), $___46__46__47_eventManager__ && $___46__46__47_eventManager__.__esModule && $___46__46__47_eventManager__ || {default: $___46__46__47_eventManager__}).eventManager;
 var $__3 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_renderers__ && $___46__46__47_renderers__.__esModule && $___46__46__47_renderers__ || {default: $___46__46__47_renderers__}),
-    getRenderer = $__3.getRenderer,
     registerRenderer = $__3.registerRenderer;
-var KEY_CODES = ($___46__46__47_helpers_47_unicode__ = require("helpers/unicode"), $___46__46__47_helpers_47_unicode__ && $___46__46__47_helpers_47_unicode__.__esModule && $___46__46__47_helpers_47_unicode__ || {default: $___46__46__47_helpers_47_unicode__}).KEY_CODES;
-var $__5 = ($___46__46__47_helpers_47_dom_47_event__ = require("helpers/dom/event"), $___46__46__47_helpers_47_dom_47_event__ && $___46__46__47_helpers_47_dom_47_event__.__esModule && $___46__46__47_helpers_47_dom_47_event__ || {default: $___46__46__47_helpers_47_dom_47_event__}),
-    stopPropagation = $__5.stopPropagation,
-    stopImmediatePropagation = $__5.stopImmediatePropagation,
-    isImmediatePropagationStopped = $__5.isImmediatePropagationStopped;
-var isListeningKeyDownEvent = new WeakMap();
-var BAD_VALUE_CLASS = 'htBadValue';
+var checked = '<span class="htCheckboxRendererInput">' + String.fromCharCode(9745) + '</span>';
+var unchecked = '<span class="htCheckboxRendererInput">' + String.fromCharCode(9744) + '</span>';
+var indetermined = '<span class="htCheckboxRendererInput noValue">' + String.fromCharCode(9744) + '</span>';
+var entityMap = {'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;', '/':'&#47;'};
+var entityRegex = /[&<>"'\/]/g;
+var entityReplacer = function (ch) { return entityMap[ch]; };
 function checkboxRenderer(instance, TD, row, col, prop, value, cellProperties) {
-  var eventManager = new EventManager(instance);
-  var input = createInput();
   var labelOptions = cellProperties.label;
-  var badValue = false;
-  if (typeof cellProperties.checkedTemplate === 'undefined') {
-    cellProperties.checkedTemplate = true;
-  }
-  if (typeof cellProperties.uncheckedTemplate === 'undefined') {
-    cellProperties.uncheckedTemplate = false;
-  }
-  empty(TD);
-  if (value === cellProperties.checkedTemplate || equalsIgnoreCase(value, cellProperties.checkedTemplate)) {
-    input.checked = true;
-  } else if (value === cellProperties.uncheckedTemplate || equalsIgnoreCase(value, cellProperties.uncheckedTemplate)) {
-    input.checked = false;
+  Handsontable.renderers.BaseRenderer(instance, TD, row, col, prop, value, cellProperties);
+  // get the checkbox
+  var content;
+  if (typeof value === 'boolean') {
+    content = value ? checked : unchecked;
   } else if (value === null) {
-    addClass(input, 'noValue');
+    content = indetermined;
   } else {
-    input.style.display = 'none';
-    addClass(input, BAD_VALUE_CLASS);
-    badValue = true;
+    // render the invalid value and return
+    value += '';
+    content = value.replace(entityRegex, entityReplacer);
+    TD.innerHTML = content;
+    return;
   }
-  if (!badValue && labelOptions) {
+  // wrap it in a label
+  if (labelOptions) {
     var labelText = '';
     if (labelOptions.value) {
       labelText = typeof labelOptions.value === 'function' ? labelOptions.value.call(this, row, col, prop, value) : labelOptions.value;
     } else if (labelOptions.property) {
       labelText = instance.getDataAtRowProp(row, labelOptions.property);
     }
-    var label = createLabel(labelText);
     if (labelOptions.position === 'before') {
-      label.appendChild(input);
+      content = '<label class="htCheckboxRendererLabel">' + labelText + content + '</label>';
     } else {
-      label.insertBefore(input, label.firstChild);
-    }
-    input = label;
-  }
-  TD.appendChild(input);
-  if (badValue) {
-    TD.appendChild(document.createTextNode('#bad-value#'));
-  }
-  if (cellProperties.readOnly) {
-    eventManager.addEventListener(input, 'click', preventDefault);
-  } else {
-    eventManager.addEventListener(input, 'mousedown', stopPropagation);
-    eventManager.addEventListener(input, 'mouseup', stopPropagation);
-    eventManager.addEventListener(input, 'change', (function(event) {
-      instance.setDataAtRowProp(row, prop, event.target.checked ? cellProperties.checkedTemplate : cellProperties.uncheckedTemplate);
-    }));
-  }
-  if (!isListeningKeyDownEvent.has(instance)) {
-    isListeningKeyDownEvent.set(instance, true);
-    instance.addHook('beforeKeyDown', onBeforeKeyDown);
-  }
-  function onBeforeKeyDown(event) {
-    var allowedKeys = [KEY_CODES.SPACE, KEY_CODES.ENTER, KEY_CODES.DELETE, KEY_CODES.BACKSPACE];
-    if (allowedKeys.indexOf(event.keyCode) !== -1 && !isImmediatePropagationStopped(event)) {
-      eachSelectedCheckboxCell(function() {
-        stopImmediatePropagation(event);
-        event.preventDefault();
-      });
-    }
-    if (event.keyCode == KEY_CODES.SPACE || event.keyCode == KEY_CODES.ENTER) {
-      toggleSelected();
-    }
-    if (event.keyCode == KEY_CODES.DELETE || event.keyCode == KEY_CODES.BACKSPACE) {
-      toggleSelected(false);
+      content = '<label class="htCheckboxRendererLabel">' + content + labelText + '</label>';
     }
   }
-  function toggleSelected() {
-    var checked = arguments[0] !== (void 0) ? arguments[0] : null;
-    eachSelectedCheckboxCell(function(checkboxes) {
-      for (var i = 0,
-          len = checkboxes.length; i < len; i++) {
-        if (hasClass(checkboxes[i], BAD_VALUE_CLASS) && checked === null) {
-          return;
-        }
-        toggleCheckbox(checkboxes[i], checked);
+  // set the content
+  TD.innerHTML = content;
+  // create the listener if necessary
+  if (!instance.cbRendererListener) {
+    var eventManager = eventManagerObject(instance);
+    var dummyTD = document.createElement('TD');
+    instance.cbRendererListener = function(event) {
+      if (hasClass(event.target, 'htCheckboxRendererInput') || hasClass(event.target, 'htCheckboxRendererLabel')) {
+        instance.view.wt.getSetting('onCellDblClick', event, null, dummyTD);
       }
+    };
+    eventManager.addEventListener(instance.rootElement, 'mousedown', instance.cbRendererListener);
+    instance.addHookOnce('afterDestroy', function() {
+      eventManager.destroy();
     });
-  }
-  function toggleCheckbox(checkbox) {
-    var checked = arguments[1] !== (void 0) ? arguments[1] : null;
-    if (checked === null) {
-      checkbox.checked = !checkbox.checked;
-    } else {
-      checkbox.checked = checked;
-    }
-    eventManager.fireEvent(checkbox, 'change');
-  }
-  function eachSelectedCheckboxCell(callback) {
-    var selRange = instance.getSelectedRange();
-    var topLeft = selRange.getTopLeftCorner();
-    var bottomRight = selRange.getBottomRightCorner();
-    for (var row = topLeft.row; row <= bottomRight.row; row++) {
-      for (var col = topLeft.col; col <= bottomRight.col; col++) {
-        var cell = instance.getCell(row, col);
-        var cellProperties$__6 = instance.getCellMeta(row, col);
-        var checkboxes = cell.querySelectorAll('input[type=checkbox]');
-        if (checkboxes.length > 0 && !cellProperties$__6.readOnly) {
-          callback(checkboxes);
-        }
-      }
-    }
   }
 }
 ;
 registerRenderer('checkbox', checkboxRenderer);
-function createInput() {
-  var input = document.createElement('input');
-  input.className = 'htCheckboxRendererInput';
-  input.type = 'checkbox';
-  input.setAttribute('autocomplete', 'off');
-  return input.cloneNode(false);
-}
-function createLabel(text) {
-  var label = document.createElement('label');
-  label.className = 'htCheckboxRendererLabel';
-  label.appendChild(document.createTextNode(text));
-  return label.cloneNode(true);
-}
-function preventDefault(event) {
-  event.preventDefault();
-}
 
 //# 
-},{"eventManager":41,"helpers/dom/element":45,"helpers/dom/event":46,"helpers/string":52,"helpers/unicode":53,"renderers":88}],92:[function(require,module,exports){
+},{"eventManager":41,"helpers/dom/element":45,"renderers":88}],92:[function(require,module,exports){
 "use strict";
 Object.defineProperties(exports, {
   htmlRenderer: {get: function() {
