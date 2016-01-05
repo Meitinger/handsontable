@@ -5291,7 +5291,7 @@ Handsontable.Core = function Core(rootElement, userSettings) {
     } else if (Array.isArray(rowHeader) && rowHeader[row] !== void 0) {
       rowHeader = rowHeader[row];
     } else if (typeof rowHeader === 'function') {
-      rowHeader = rowHeader(row);
+      rowHeader = rowHeader.call(instance, row);
     } else if (rowHeader && typeof rowHeader !== 'string' && typeof rowHeader !== 'number') {
       rowHeader = row + 1;
     }
@@ -17709,6 +17709,9 @@ var $__1 = ($___46__46__47_renderers__ = require("renderers"), $___46__46__47_re
     registerRenderer = $__1.registerRenderer;
 function htmlRenderer(instance, TD, row, col, prop, value, cellProperties) {
   Handsontable.renderers.BaseRenderer(instance, TD, row, col, prop, value, cellProperties);
+  if (value == void 0) {
+    value = cellProperties.placeholder || '';
+  }
   TD.innerHTML = value;
 }
 ;
