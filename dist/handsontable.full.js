@@ -9649,6 +9649,9 @@ function resetCssTransform(element) {
   }
 }
 function isInput(element) {
+  if (!element) {
+    return false;
+  }
   var inputs = ['INPUT', 'SELECT', 'TEXTAREA'];
   return inputs.indexOf(element.nodeName) > -1 || element.contentEditable === 'true';
 }
