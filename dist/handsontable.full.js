@@ -7111,18 +7111,27 @@ var CheckboxEditor = function CheckboxEditor() {
 var $CheckboxEditor = CheckboxEditor;
 ($traceurRuntime.createClass)(CheckboxEditor, {
   beginEditing: function(initialValue, event) {
-    if (this.state != Handsontable.EditorState.VIRGIN) {
+    // NOTE: don't trust originalValue, it might be stale
+    var value
+    if (initialValue == void 0) {
+      // if we don't have an initial value toggle the state (mouse click, F2, ...)
+      value = !this.instance.getDataAtCell(this.row, this.col);
+    } else if (typeof initialValue === 'boolean') {
+      // if we are called with a proper value then set it
+      value = typeof initialValue;
+    } else if (event) {
+      // if not, check if we should toggle the state based on the key code
+      if (event.keyCode === 13 || event.keyCode === 32) {
+        value = !this.instance.getDataAtCell(this.row, this.col);
+      } else {
+        return;
+      }
+    } else {
       return;
     }
-    if (initialValue == void 0) {
-      initialValue = this.originalValue;
-    }
-    if (typeof initialValue === 'boolean') {
-      initialValue = initialValue ? false : null;
-    } else {
-      initialValue = true;
-    }
-    this.saveValue([[initialValue]], event && (event.ctrlKey || event.metaKey) && !event.altKey);
+    // set all the selected cells and render
+    var sel = this.instance.getSelected();
+    this.saveValue([[value]], sel[0] !== sel[2]|| sel[1] !== sel[3]);
     this.instance.view.render();
   },
   finishEditing: function() {},
@@ -7903,6 +7912,7 @@ var BaseEditor = ($___95_baseEditor__ = require("_baseEditor"), $___95_baseEdito
 var SelectEditor = BaseEditor.prototype.extend();
 SelectEditor.prototype.init = function() {
   this.select = document.createElement('SELECT');
+  addClass(this.select, 'handsontableInput');
   addClass(this.select, 'htSelectEditor');
   this.select.style.display = 'none';
   this.instance.rootElement.appendChild(this.select);
@@ -7983,13 +7993,11 @@ var onBeforeKeyDown = function(event) {
   }
 };
 SelectEditor.prototype.open = function() {
-  this._opened = true;
   this.refreshDimensions();
   this.select.style.display = '';
   this.instance.addHook('beforeKeyDown', onBeforeKeyDown);
 };
 SelectEditor.prototype.close = function() {
-  this._opened = false;
   this.select.style.display = 'none';
   this.instance.removeHook('beforeKeyDown', onBeforeKeyDown);
 };
