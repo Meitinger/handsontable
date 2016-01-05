@@ -15296,16 +15296,13 @@ var $ManualColumnResize = ManualColumnResize;
     return null;
   },
   onMouseOver: function(event) {
-    if (this.checkIfColumnHeader(event.target)) {
-      var th = this.getTHFromTargetElement(event.target);
-      if (!th) {
-        return;
-      }
-      var colspan = th.getAttribute('colspan');
-      if (th && (colspan === null || colspan === 1)) {
-        if (!this.pressed) {
-          this.setupHandlePosition(th);
+    for (var element = event.target; element && element !== this.hot.rootElement; element = element.parentNode) {
+      if (element.tagName == 'TH') {
+        var colspan = element.getAttribute('colspan');
+        if ((colspan === null || colspan === 1) && !this.pressed) {
+          this.setupHandlePosition(element);
         }
+        return;
       }
     }
   },
@@ -15762,12 +15759,12 @@ var $ManualRowResize = ManualRowResize;
     return null;
   },
   onMouseOver: function(event) {
-    if (this.checkIfRowHeader(event.target)) {
-      var th = this.getTHFromTargetElement(event.target);
-      if (th) {
+    for (var element = event.target; element && element !== this.hot.rootElement; element = element.parentNode) {
+      if (element.tagName == 'TH') {
         if (!this.pressed) {
-          this.setupHandlePosition(th);
+          this.setupHandlePosition(element);
         }
+        return;
       }
     }
   },
