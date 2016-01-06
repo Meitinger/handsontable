@@ -18703,7 +18703,12 @@ TableView.prototype.updateCellHeader = function(element, index, content) {
   if (index > -1) {
     fastInnerHTML(element, content(index));
   } else {
-    fastInnerText(element, String.fromCharCode(160));
+    var rowHeader = this.instance.getSettings().rowHeaders;
+    if (typeof rowHeader === 'function') {
+      fastInnerHTML(element, rowHeader.call(this.instance, index));
+    } else {
+      fastInnerText(element, String.fromCharCode(160));
+    }
     addClass(element, 'cornerHeader');
   }
 };
