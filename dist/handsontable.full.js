@@ -18485,6 +18485,8 @@ function TableView(instance) {
               instance.selection.setSelectedHeaders(true, false);
               instance.selectCell(coords.row, 0, coords.row, instance.countCols() - 1);
             }
+          } else if (coords.row < 0 && coords.col < 0) {
+            instance.selectCell(0, 0, instance.countRows() - 1, instance.countCols() - 1);
           } else {
             coords.row = coords.row < 0 ? 0 : coords.row;
             coords.col = coords.col < 0 ? 0 : coords.col;
