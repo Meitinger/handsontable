@@ -10000,7 +10000,7 @@ function deepClone(obj) {
     for (var i = 0; i < obj.length; i++) {
         result[i] = deepClone(obj[i]);
     }
-  } else if (typeof obj === 'object' && !Object.getPrototypeOf(obj)) {
+  } else if (typeof obj === 'object' && obj !== null && !Object.getPrototypeOf(obj)) {
     result = {};
     for (var prop in obj) {
       result[prop] = deepClone(obj[prop]);
