@@ -9994,14 +9994,21 @@ function deepExtend(target, extension) {
   });
 }
 function deepClone(obj) {
-  if (typeof obj === 'object') {
-    if (obj instanceof Date) {
-      return obj;
-    } else {
-      return JSON.parse(JSON.stringify(obj));
+  var result;
+  if (Array.isArray(obj)) {
+    result = new Array(obj.length);
+    for (var i = 0; i < obj.length; i++) {
+        result[i] = deepClone(obj[i]);
     }
+  } else if (typeof obj === 'object' && !Object.getPrototypeOf(obj)) {
+    result = {};
+    for (var prop in obj) {
+      result[prop] = deepClone(obj[prop]);
+    }
+  } else {
+    result = obj;
   }
-  return obj;
+  return result;
 }
 function clone(object) {
   var result = {};
