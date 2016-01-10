@@ -3953,11 +3953,25 @@ Handsontable.TextCell = {
   },
   comparer: function (sortOrder) {
     if (window.Intl && window.Intl.Collator) {
-      var collator = new Intl.Collator(this.language);
+      var collator = new Intl.Collator(this.language, { numeric: true });
       if (sortOrder) {
-        return function (a, b) { return collator.compare(a[1], b[1]); };
+        return function (a, b) {
+          var nullCheck = (b[1] === null) - (a[1] === null);
+          if (nullCheck === 0) {
+            return collator.compare(a[1], b[1]);
+          } else {
+            return nullCheck;
+          }
+        };
       } else {
-        return function (a, b) { return collator.compare(b[1], a[1]); };
+        return function (a, b) {
+          var nullCheck = (a[1] === null) - (b[1] === null);
+          if (nullCheck === 0) {
+            return collator.compare(b[1], a[1]);
+          } else {
+            return nullCheck;
+          }
+        };
       }
     } else {
       return Handsontable.plugins.ColumnSorting.prototype.defaultSort(sortOrder);
