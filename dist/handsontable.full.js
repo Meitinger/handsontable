@@ -4657,10 +4657,10 @@ Handsontable.Core = function Core(rootElement, userSettings) {
     isInProgress: function() {
       return instance.selection.inProgress;
     },
-    setRangeStart: function(coords, keepEditorOpened) {
+    setRangeStart: function(coords, keepEditorOpened, scrollToCell) {
       Handsontable.hooks.run(instance, 'beforeSetRangeStart', coords);
       priv.selRange = new WalkontableCellRange(coords, coords, coords);
-      selection.setRangeEnd(coords, null, keepEditorOpened);
+      selection.setRangeEnd(coords, scrollToCell, keepEditorOpened);
     },
     setRangeEnd: function(coords, scrollToCell, keepEditorOpened) {
       if (priv.selRange === null) {
