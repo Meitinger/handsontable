@@ -19724,6 +19724,9 @@ CopyPasteClass.prototype.onKeyDown = function(event) {
       isCtrlDown = false;
   function isActiveElementEditable() {
     var element = document.activeElement;
+    if (!element) {
+      return false;
+    }
     if (element.shadowRoot && element.shadowRoot.activeElement) {
       element = element.shadowRoot.activeElement;
     }
