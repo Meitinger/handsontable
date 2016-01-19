@@ -18574,7 +18574,12 @@ function TableView(instance) {
       if (window.getSelection().empty) {
         window.getSelection().empty();
       } else if (window.getSelection().removeAllRanges) {
-        window.getSelection().removeAllRanges();
+        try {
+          window.getSelection().removeAllRanges();
+        }
+        catch(e) {
+          // IE throws error on empty cell
+        }
       }
     } else if (document.selection) {
       document.selection.empty();
