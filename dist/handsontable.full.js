@@ -4657,10 +4657,10 @@ Handsontable.Core = function Core(rootElement, userSettings) {
     isInProgress: function() {
       return instance.selection.inProgress;
     },
-    setRangeStart: function(coords, scrollToCell, keepEditorOpened) {
+    setRangeStart: function(coords, keepEditorOpened) {
       Handsontable.hooks.run(instance, 'beforeSetRangeStart', coords);
       priv.selRange = new WalkontableCellRange(coords, coords, coords);
-      selection.setRangeEnd(coords, scrollToCell, keepEditorOpened);
+      selection.setRangeEnd(coords, null, keepEditorOpened);
     },
     setRangeEnd: function(coords, scrollToCell, keepEditorOpened) {
       if (priv.selRange === null) {
@@ -4786,7 +4786,7 @@ Handsontable.Core = function Core(rootElement, userSettings) {
         coords.col = totalCols - 1;
       }
       instance.runHooks('afterModifyTransformStart', coords, rowTransformDir, colTransformDir);
-      selection.setRangeStart(coords, true, keepEditorOpened);
+      selection.setRangeStart(coords, keepEditorOpened);
     },
     transformEnd: function(rowDelta, colDelta) {
       var delta = new WalkontableCellCoords(rowDelta, colDelta),
@@ -5704,7 +5704,7 @@ Handsontable.Core = function Core(rootElement, userSettings) {
   this.isEmptyCol = function(col) {
     return priv.settings.isEmptyCol.call(instance, col);
   };
-  this.selectCell = function(row, col, endRow, endCol, scrollToCell, changeListener) {
+  this.selectCell = function(row, col, endRow, endCol, scrollToCell, changeListener, keepEditorOpened) {
     var coords;
     changeListener = typeof changeListener === 'undefined' || changeListener === true;
     if (typeof row !== 'number' || row < 0 || row >= instance.countRows()) {
@@ -5727,9 +5727,9 @@ Handsontable.Core = function Core(rootElement, userSettings) {
       instance.listen();
     }
     if (typeof endRow === 'undefined') {
-      selection.setRangeEnd(priv.selRange.from, scrollToCell);
+      selection.setRangeEnd(priv.selRange.from, scrollToCell, keepEditorOpened);
     } else {
-      selection.setRangeEnd(new WalkontableCellCoords(endRow, endCol), scrollToCell);
+      selection.setRangeEnd(new WalkontableCellCoords(endRow, endCol), scrollToCell, keepEditorOpened);
     }
     instance.selection.finish();
     return true;
