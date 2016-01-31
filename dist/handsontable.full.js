@@ -12047,8 +12047,10 @@ var $ColumnSorting = ColumnSorting;
     if (typeof this.hot.sortOrder != 'undefined') {
       sortingState.sortOrder = this.hot.sortOrder;
     }
-    if (sortingState.hasOwnProperty('sortColumn') || sortingState.hasOwnProperty('sortOrder')) {
+    if (sortingState.hasOwnProperty('sortColumn') && sortingState.hasOwnProperty('sortOrder')) {
       Handsontable.hooks.run(this.hot, 'persistentStateSave', 'columnSorting', sortingState);
+    } else {
+      Handsontable.hooks.run(this.hot, 'persistentStateReset', 'columnSorting');
     }
   },
   loadSortingState: function() {
@@ -12065,23 +12067,7 @@ var $ColumnSorting = ColumnSorting;
     this.bindedSortEvent = true;
     eventManager.addEventListener(this.hot.rootElement, 'click', function(e) {
       if (hasClass(e.target, 'columnSorting')) {
-        var col = getColumn(e.target);
-        if (col === this.lastSortedColumn) {
-          switch (_this.hot.sortOrder) {
-            case void 0:
-              _this.sortOrderClass = 'ascending';
-              break;
-            case true:
-              _this.sortOrderClass = 'descending';
-              break;
-            case false:
-              _this.sortOrderClass = void 0;
-          }
-        } else {
-          _this.sortOrderClass = 'ascending';
-        }
-        this.lastSortedColumn = col;
-        _this.sortByColumn(col);
+        _this.sortByColumn(getColumn(e.target));
       }
     });
     function countRowHeaders() {
@@ -12186,9 +12172,9 @@ var $ColumnSorting = ColumnSorting;
     removeClass(headerLink, 'ascending');
     if (this.sortIndicators[col]) {
       if (col === this.hot.sortColumn) {
-        if (this.sortOrderClass === 'ascending') {
+        if (this.hot.sortOrder === true) {
           addClass(headerLink, 'ascending');
-        } else if (this.sortOrderClass === 'descending') {
+        } else if (this.hot.sortOrder === false) {
           addClass(headerLink, 'descending');
         }
       }
